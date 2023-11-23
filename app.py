@@ -1,13 +1,12 @@
 import os
+import sys
 import gradio as gr
 import datetime
 from TTS.api import TTS
 import subprocess
 from faster_whisper import WhisperModel
-# from openai import OpenAI
 import requests
 from moviepy.editor import VideoFileClip
-from pydub import AudioSegment
 
 language_map = {
     "ar": "Arabic",
@@ -29,27 +28,27 @@ language_map = {
 }
 
 # get current file directory
-current_file_path = os.path.dirname(os.path.abspath(__file__))
+current_file_dir = os.path.dirname(os.path.abspath(__file__))
 video_length_seconds = 30
 
 def get_video_length(video_path):
     video = VideoFileClip(video_path)
     return video.duration # 视频时长（秒）
 
-def get_audio_length(audio_path):
-    audio = AudioSegment.from_file(audio_path)
-    duration = len(audio) / 1000  # 音频时长（秒）
-    return duration
+# def get_audio_length(audio_path):
+#     audio = AudioSegment.from_file(audio_path)
+#     duration = len(audio) / 1000  # 音频时长（秒）
+#     return duration
 
 def update_extract_end_time(video_path):
     if video_path is not None:
         return get_video_length(video_path)
     return 0
 
-def update_translated_speech_audio_speed(translated_speech_audio):
-    if translated_speech_audio is not None:
-        return round(get_audio_length(translated_speech_audio) / video_length_seconds, 2)
-    return 1.0
+# def update_translated_speech_audio_speed(translated_speech_audio):
+#     if translated_speech_audio is not None:
+#         return round(get_audio_length(translated_speech_audio) / video_length_seconds, 2)
+#     return 1.0
 
 def extract_audio_and_text(video_path, raw_speech_language, extract_start_time_seconds, extract_end_time_seconds):
     # 上传视频，提取人声和文本
@@ -60,9 +59,9 @@ def extract_audio_and_text(video_path, raw_speech_language, extract_start_time_s
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     raw_audio_file_name = f"{video_file_name}_{current_time}_{extract_start_time_seconds}_{extract_end_time_seconds}.wav"
-    raw_audio_file_path = f"{current_file_path}/output/raw_audio/{raw_audio_file_name}"
+    raw_audio_file_path = f"{current_file_dir}/output/raw_audio/{raw_audio_file_name}"
 
-    raw_speech_path = f"{current_file_path}/output/raw_speech/"
+    raw_speech_path = f"{current_file_dir}/output/raw_speech/"
     raw_speech_file_path = f"{raw_speech_path}/{video_file_name}_{current_time}_{extract_start_time_seconds}_{extract_end_time_seconds}/vocals.wav"
     raw_accompaniment_file_path = f"{raw_speech_path}/{video_file_name}_{current_time}_{extract_start_time_seconds}_{extract_end_time_seconds}/accompaniment.wav"
 
@@ -93,11 +92,11 @@ def extract_audio_and_text(video_path, raw_speech_language, extract_start_time_s
         raise Exception("从视频中提取音频失败")
 
     ## step 2. use spleeter to extract speech from audio
-    spleeter_cmd_env = "video-speech-localization-spleeter"
+    spleeter_cmd_env = os.path.join(os.environ.get("CONDA_VIRTUAL_ENV_PATH"), "video-speech-localization-spleeter")
     extract_speech_cmd = [
         "conda", 
         "run", 
-        "-n", f"{spleeter_cmd_env}", 
+        "-p", f"{spleeter_cmd_env}", 
         "spleeter", 
         "separate", 
         "-p", "spleeter:2stems", 
@@ -112,27 +111,31 @@ def extract_audio_and_text(video_path, raw_speech_language, extract_start_time_s
     else:
         raise Exception("从音频中提取人声失败")
 
+    whisper_model = "/data/.hugggingface/cache/hub/models--guillaumekln--faster-whisper-large-v2/refs/main"
     ## step 3. call faster-whisper to recognize speech transcript from speech
     # Run on GPU with FP16
     # model = WhisperModel("large-v2", device="cuda", compute_type="float16")
     # or run on GPU with INT8
     # model = WhisperModel("large-v2", device="cuda", compute_type="int8_float16")
     # or run on CPU with INT8
-    model = WhisperModel("large-v2", device="cpu", compute_type="int8")
+    model = WhisperModel(whisper_model, device="cpu", compute_type="int8")
 
     segments, info = model.transcribe(f"{raw_speech_file_path}", beam_size=5)
 
     print("Detected language '%s' with probability %f" % (info.language, info.language_probability))
 
     raw_speech_text = []
+    raw_speech_text_segment = []
     for segment in segments:
         tmp = "[%.2fs -> %.2fs]: %s" % (segment.start, segment.end, segment.text)
         print(tmp)
         raw_speech_text.append(segment.text)  # TODO: reserve start and end time of every segment in order to align with original video
+        raw_speech_text_segment.append(tmp)
 
     raw_speech_text = " ".join(raw_speech_text)
+    raw_speech_text_segment = "\n\n".join(raw_speech_text_segment)
 
-    return raw_speech_file_path, raw_accompaniment_file_path, raw_speech_text
+    return raw_speech_file_path, raw_accompaniment_file_path, raw_speech_text, raw_speech_text_segment
 
 
 def translate(raw_speech_audio, raw_speech_text, target_language):
@@ -193,10 +196,14 @@ def compose_target_language_audio(raw_speech_audio, translated_speech_text, targ
     # 合成目标语言人声
     ## use coqui-xTTS-V2 to synthesize target language speech audio and clone raw speech tone
     raw_speech_file_name = raw_speech_audio.split("/")[-2] + "_" + raw_speech_audio.split("/")[-1].split(".")[0]
-    translated_speech_file_path = f"{current_file_path}/output/translated_speech/{target_language}_{raw_speech_file_name}.wav"
+    translated_speech_file_path = f"{current_file_dir}/output/translated_speech/{target_language}_{raw_speech_file_name}.wav"
 
     # Init coqui 🐸TTS
-    tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to("cpu")
+    tts = TTS(
+        #model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+        model_path="/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/",
+        config_path="/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/config.json"
+    ).to("cuda")
 
     # Run TTS
     # ❗ Since xtts_v2 model is multi-lingual voice cloning model, we must set the target speaker_wav and language
@@ -207,11 +214,51 @@ def compose_target_language_audio(raw_speech_audio, translated_speech_text, targ
 
     return translated_speech_file_path
 
+def compose_lip_sync_video(original_video, translated_speech_audio, audio_play_speed):
+    # 合成口型对齐视频
+    ## use video-retalking to generate lip-synced video
+    lip_sync_video_file_path = f"{current_file_dir}/output/lip_synced_video/{original_video.split('/')[-1].split('.')[0]}-{translated_speech_audio.split('/')[-1].split('.')[0]}.mp4"
+
+    video_retalking_env = os.path.join(os.environ.get("CONDA_VIRTUAL_ENV_PATH"), "video-speech-localization-video-retalking")
+    compose_lip_sync_video_cmd = [
+        # "export", "CUDA_HOME=/usr/local/cuda-11.8/",
+        # "&&",
+        # "export", "CUDA_VISIBLE_DEVICES=4",
+        # "&&",
+        # "cd", f"{current_file_dir}/video-retalking", 
+        # "&&",
+        "conda", 
+        "run", 
+        "-p",  f"{video_retalking_env}", 
+        "python",
+        "inference.py",
+        "--face",  f"{original_video}",
+        "--audio", f"{translated_speech_audio}",
+        "--outfile", f"{lip_sync_video_file_path}"
+    ]
+    video_retalking_env_vars = {
+        "CUDA_HOME": os.environ.get("CUDA_HOME"),
+        "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH")
+    }
+    video_retalking_workdir = f"{current_file_dir}/video-retalking"
+
+    print(" ".join(compose_lip_sync_video_cmd))
+    result = subprocess.run(compose_lip_sync_video_cmd, capture_output=True, text=True, cwd=video_retalking_workdir, env=video_retalking_env_vars)
+    print(result)
+    # To check if the command was successful
+    if result.returncode == 0:
+        print("合成口型对齐视频成功")
+    else:
+        raise Exception("合成口型对齐视频失败") 
+
+    return lip_sync_video_file_path
+
 
 def compose_final_video(original_video, target_speech_language, translated_speech_audio, translated_speech_text, raw_accompaniment_audio, audio_play_speed, extract_start_time_seconds, extract_end_time_seconds):
     # 合成最终视频
-    finale_video_file_path = f"{current_file_path}/output/final_video/{translated_speech_audio.split('/')[-1].split('.')[0]}.mp4"
-    ## step 1. use ffmpeg to replace original video speech with translated speech
+    finale_video_file_path = f"{current_file_dir}/output/final_video/{translated_speech_audio.split('/')[-1].split('.')[0]}.mp4"
+    ## use ffmpeg to replace original video speech with translated speech, and mix with raw accompaniment audio
     compose_cmd = [
         "ffmpeg", 
         "-i", f"{original_video}", 
@@ -235,7 +282,34 @@ def compose_final_video(original_video, target_speech_language, translated_speec
     return finale_video_file_path
 
 
+def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio):
+    # 合成最终视频
+    finale_video_file_path = f"{current_file_dir}/output/final_video/{lip_sync_video.split('/')[-1].split('.')[0]}.mp4"
+    ## use ffmpeg to replace original video speech with translated speech
+    compose_cmd = [
+        "ffmpeg", 
+        "-i", f"{lip_sync_video}", 
+        "-i", f"{raw_accompaniment_audio}", 
+        "-filter_complex", "[0:a][1:a]amerge=inputs=2[a]",
+        "-map", "0:v"
+        "-map", "[a]",
+        "-c:v", "copy",
+        "-ac", "2",
+        f"{finale_video_file_path}"]
+    print(" ".join(compose_cmd))
+    result = subprocess.run(compose_cmd, capture_output=True, text=True)
+    print(result)
+    # To check if the command was successful
+    if result.returncode == 0:
+        print("合成最终视频成功")
+    else:
+        raise Exception("合成最终视频失败")
+
+    return finale_video_file_path
+
+
 with gr.Blocks() as app:
+    gr.Markdown("## 视频本地化 Demo [Github](https://github.com/crowaixyz/video-speech-localization)")
     # step 1. 上传视频
     gr.Markdown("### Step 1. 上传视频")
     with gr.Row():
@@ -255,7 +329,8 @@ with gr.Blocks() as app:
 
     raw_speech_audio = gr.Audio(label="人声", type="filepath", interactive=False)
     raw_accompaniment_audio = gr.Audio(label="背景音乐", type="filepath", interactive=False)
-    raw_speech_text = gr.Textbox(label="人声文本（可修改，对于不需要进行后续翻译的词使用'<>'）")
+    raw_speech_text_segment = gr.Textbox(label="按时间分段的人声文本", interactive=False)
+    raw_speech_text = gr.Textbox(label="完整不分段的人声文本（可修改，对于不需要进行后续翻译的词使用'<>'）")
 
     # step 3. 翻译为目标语言
     gr.Markdown("### Step 3. 翻译为目标语言")
@@ -272,14 +347,21 @@ with gr.Blocks() as app:
 
     translated_speech_audio = gr.Audio(label="目标语言人声", type="filepath", interactive=False)
 
-    # step 5. 合成最终视频
-    # version 1.0
-    gr.Markdown("### Step 5. 合成最终视频")
+    # step 5. 合成口型对齐视频
+    gr.Markdown("### Step 5. 合成口型对齐视频")
     with gr.Row():
-        audio_play_speed = gr.Slider(label="调整翻译后的人声倍速", minimum=0.5, maximum=2.0, value=1.0, step=0.01, interactive=True)
+        audio_play_speed = gr.Slider(label="调整翻译后的人声倍速", minimum=0.5, maximum=2.0, value=1.0, step=0.01, interactive=False)
+        compose_lip_sync_video_button = gr.Button("点击合成")
+    
+    lip_synced_video = gr.Video(label="口型对齐视频", interactive=False)
+
+    # Step 6. 合成最终视频
+    gr.Markdown("### Step 6. 合成最终视频")
+    with gr.Row():
         compose_final_video_button = gr.Button("点击合成")
 
-    final_video = gr.Video(label="最终视频")
+    final_video = gr.Video(label="最终视频", interactive=False)
+
 
     # 回调事件
     ## 1. 上传视频后，自动获取视频时长，并更新提取结束时间 slider 组件的值
@@ -291,7 +373,7 @@ with gr.Blocks() as app:
     audio_extract_button.click(
         extract_audio_and_text,
         inputs=[original_video, original_videl_speech_language, extract_start_time_seconds, extract_end_time_seconds],
-        outputs=[raw_speech_audio, raw_accompaniment_audio, raw_speech_text]
+        outputs=[raw_speech_audio, raw_accompaniment_audio, raw_speech_text, raw_speech_text_segment]
     )
     translate_button.click(
         translate,
@@ -303,10 +385,20 @@ with gr.Blocks() as app:
         inputs=[raw_speech_audio, translated_speech_text, target_speech_language],
         outputs=[translated_speech_audio]
     )
+    compose_lip_sync_video_button.click(
+        compose_lip_sync_video,
+        inputs=[original_video, translated_speech_audio, audio_play_speed],
+        outputs=[lip_synced_video]
+    )
     compose_final_video_button.click(
-        compose_final_video,
-        inputs=[original_video, target_speech_language, translated_speech_audio, translated_speech_text, raw_accompaniment_audio, audio_play_speed, extract_start_time_seconds, extract_end_time_seconds],
+        compose_final_video_v2,
+        inputs=[lip_synced_video, raw_accompaniment_audio],
         outputs=[final_video]
     )
 
-app.launch(server_name=os.environ.get("SERVER_NAME"), server_port=os.environ.get("SERVER_PORT"), share=False)
+# add wav2lip_uhq_scripts_dir to sys.path
+wav2lip_uhq_scripts_dir = current_file_dir + "/scripts"
+if wav2lip_uhq_scripts_dir not in sys.path:
+    sys.path.extend([wav2lip_uhq_scripts_dir])
+
+app.launch(server_name=os.environ.get("VSL_SERVER_NAME"), server_port=int(os.environ.get("VSL_SERVER_PORT")), share=False)
