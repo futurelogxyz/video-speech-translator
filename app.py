@@ -192,7 +192,7 @@ def translate(raw_speech_audio, raw_speech_text, target_language):
     return translated_speech_text
 
 
-def compose_target_language_audio(raw_speech_audio, translated_speech_text, target_language):
+def compose_target_language_audio(raw_speech_audio, translated_speech_text, target_language, audio_speed):
     # 合成目标语言人声
     ## use coqui-xTTS-V2 to synthesize target language speech audio and clone raw speech tone
     raw_speech_file_name = raw_speech_audio.split("/")[-2] + "_" + raw_speech_audio.split("/")[-1].split(".")[0]
@@ -210,7 +210,7 @@ def compose_target_language_audio(raw_speech_audio, translated_speech_text, targ
     # Text to speech list of amplitude values as output
     # wav = tts.tts(text="Hello world!", speaker_wav="my/cloning/audio.wav", language="en")
     # Text to speech to a file
-    tts.tts_to_file(text=f"{translated_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path}")
+    tts.tts_to_file(text=f"{translated_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path}", speed=audio_speed)
 
     return translated_speech_file_path
 
@@ -291,7 +291,7 @@ def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio):
         "-i", f"{lip_sync_video}", 
         "-i", f"{raw_accompaniment_audio}", 
         "-filter_complex", "[0:a][1:a]amerge=inputs=2[a]",
-        "-map", "0:v"
+        "-map", "0:v",
         "-map", "[a]",
         "-c:v", "copy",
         "-ac", "2",
@@ -341,8 +341,9 @@ with gr.Blocks() as app:
     translated_speech_text = gr.Textbox(label="翻译后的人声文本（可修改）", interactive=True)
 
     # step 4. 合成目标语言人声
+    gr.Markdown("### Step 4. 合成目标语言人声")
     with gr.Row():
-        gr.Markdown("### Step 4. 合成目标语言人声")
+        audio_speed = gr.Slider(label="调整人声语速", minimum=0.5, maximum=2.0, value=1.0, step=0.01, interactive=True)
         compose_target_language_audio_button = gr.Button("点击合成")
 
     translated_speech_audio = gr.Audio(label="目标语言人声", type="filepath", interactive=False)
@@ -350,7 +351,6 @@ with gr.Blocks() as app:
     # step 5. 合成口型对齐视频
     gr.Markdown("### Step 5. 合成口型对齐视频")
     with gr.Row():
-        audio_play_speed = gr.Slider(label="调整翻译后的人声倍速", minimum=0.5, maximum=2.0, value=1.0, step=0.01, interactive=False)
         compose_lip_sync_video_button = gr.Button("点击合成")
     
     lip_synced_video = gr.Video(label="口型对齐视频", interactive=False)
@@ -382,12 +382,12 @@ with gr.Blocks() as app:
     )
     compose_target_language_audio_button.click(
         compose_target_language_audio,
-        inputs=[raw_speech_audio, translated_speech_text, target_speech_language],
+        inputs=[raw_speech_audio, translated_speech_text, target_speech_language, audio_speed],
         outputs=[translated_speech_audio]
     )
     compose_lip_sync_video_button.click(
         compose_lip_sync_video,
-        inputs=[original_video, translated_speech_audio, audio_play_speed],
+        inputs=[original_video, translated_speech_audio],
         outputs=[lip_synced_video]
     )
     compose_final_video_button.click(
