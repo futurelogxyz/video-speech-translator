@@ -362,7 +362,7 @@ def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio, translated_s
         "ffmpeg", 
         "-i", f"{lip_sync_video}", 
         "-i", f"{raw_accompaniment_audio}", 
-        "-vf", f"subtitles={translated_speech_srt}",
+        "-vf", f"subtitles={translated_speech_srt},drawtext=text='By wallezen @ CrowAI':x=20:y=20:fontsize=28:fontcolor=orange:fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
         "-filter_complex", "[0:a][1:a]amerge=inputs=2[a]",
         "-map", "0:v",
         "-map", "[a]",
