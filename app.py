@@ -471,9 +471,4 @@ with gr.Blocks() as app:
         outputs=[final_video]
     )
 
-# add wav2lip_uhq_scripts_dir to sys.path
-wav2lip_uhq_scripts_dir = current_file_dir + "/scripts"
-if wav2lip_uhq_scripts_dir not in sys.path:
-    sys.path.extend([wav2lip_uhq_scripts_dir])
-
 app.launch(server_name=os.environ.get("VSL_SERVER_NAME"), server_port=int(os.environ.get("VSL_SERVER_PORT")), share=False)
