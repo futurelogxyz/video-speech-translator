@@ -254,7 +254,7 @@ def translate(raw_speech_audio, raw_speech_text, raw_speech_text_segment, target
     return translated_speech_text, translated_speech_text_segment
 
 
-def compose_target_language_audio(raw_speech_audio, translated_speech_text, translated_speech_text_segment, target_language, audio_speed):
+def compose_target_language_audio(raw_speech_audio, translated_speech_text, translated_speech_text_segment, target_language, speech_speed):
     # 合成目标语言人声
     ## use coqui-xTTS-V2 to synthesize target language speech audio and clone raw speech tone
     raw_speech_file_name = raw_speech_audio.split("/")[-2] + "_" + raw_speech_audio.split("/")[-1].split(".")[0]
@@ -280,12 +280,12 @@ def compose_target_language_audio(raw_speech_audio, translated_speech_text, tran
     # Text to speech list of amplitude values as output
     # wav = tts.tts(text="Hello world!", speaker_wav="my/cloning/audio.wav", language="en")
     # Text to speech to a file
-    tts.tts_to_file(text=f"{pure_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path}", speed=audio_speed)
+    tts.tts_to_file(text=f"{pure_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path}", speed=speech_speed)
 
     return translated_speech_file_path, translated_speech_srt_file_path
 
 
-def compose_lip_sync_video(original_video, translated_speech_audio, audio_play_speed):
+def compose_lip_sync_video(original_video, translated_speech_audio):
     # 合成口型对齐视频
     ## use video-retalking to generate lip-synced video
     lip_sync_video_file_path = f"{current_file_dir}/output/lip_synced_video/{original_video.split('/')[-1].split('.')[0]}-{translated_speech_audio.split('/')[-1].split('.')[0]}.mp4"
@@ -326,7 +326,7 @@ def compose_lip_sync_video(original_video, translated_speech_audio, audio_play_s
     return lip_sync_video_file_path
 
 
-def compose_final_video(original_video, target_speech_language, translated_speech_audio, translated_speech_text, raw_accompaniment_audio, audio_play_speed, extract_start_time_seconds, extract_end_time_seconds):
+def compose_final_video_without_lip_sync(original_video, translated_speech_audio, raw_accompaniment_audio, translated_speech_srt):
     # 合成最终视频
     finale_video_file_path = f"{current_file_dir}/output/final_video/{translated_speech_audio.split('/')[-1].split('.')[0]}.mp4"
     ## use ffmpeg to replace original video speech with translated speech, and mix with raw accompaniment audio
@@ -335,11 +335,12 @@ def compose_final_video(original_video, target_speech_language, translated_speec
         "-i", f"{original_video}", 
         "-i", f"{translated_speech_audio}", 
         "-i", f"{raw_accompaniment_audio}", 
-        "-filter_complex", f"[1:a]atempo={audio_play_speed}[a1];[2:a]atempo={audio_play_speed}[a2];[a1][a2]amix=inputs=2[a]", 
+        "-vf", f"subtitles={translated_speech_srt},drawtext=text='wallezen@CrowAI':x=10:y=10:fontsize=24:fontcolor=white:fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+        "-filter_complex", "[1:a]atempo=1.0[a1];[2:a]atempo=1.0[a2];[a1][a2]amix=inputs=2[a]", 
         "-map", "0:v",
         "-map", "[a]",
-        "-c:v", "copy",
         "-c:a", "aac",
+        "-ac", "2",
         f"{finale_video_file_path}"
     ]
     print(" ".join(compose_cmd))
@@ -354,7 +355,7 @@ def compose_final_video(original_video, target_speech_language, translated_speec
     return finale_video_file_path
 
 
-def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio, translated_speech_srt):
+def compose_final_video_with_lip_sync(lip_sync_video, raw_accompaniment_audio, translated_speech_srt):
     # 合成最终视频
     finale_video_file_path = f"{current_file_dir}/output/final_video/{lip_sync_video.split('/')[-1].split('.')[0]}.mp4"
     ## use ffmpeg to replace original video speech with translated speech
@@ -362,7 +363,7 @@ def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio, translated_s
         "ffmpeg", 
         "-i", f"{lip_sync_video}", 
         "-i", f"{raw_accompaniment_audio}", 
-        "-vf", f"subtitles={translated_speech_srt},drawtext=text='By wallezen @ CrowAI':x=20:y=20:fontsize=28:fontcolor=orange:fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+        "-vf", f"subtitles={translated_speech_srt},drawtext=text='wallezen@CrowAI':x=10:y=10:fontsize=24:fontcolor=white:fontfile=/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
         "-filter_complex", "[0:a][1:a]amerge=inputs=2[a]",
         "-map", "0:v",
         "-map", "[a]",
@@ -380,6 +381,23 @@ def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio, translated_s
 
     return finale_video_file_path
 
+def compose_final_video(original_video, translated_speech_audio, raw_accompaniment_audio, translated_speech_srt, lip_sync_radio, subtitle_radio):
+    # compose final video
+    # step 1. compose lip-synced video
+    lip_sync_video = ""
+    if lip_sync_radio == "是":
+        lip_sync_video = compose_lip_sync_video(original_video, translated_speech_audio)
+
+    finale_video_file_path = ""
+    if lip_sync_video != "":
+        finale_video_file_path = compose_final_video_with_lip_sync(lip_sync_video, raw_accompaniment_audio, translated_speech_srt)
+    else:
+        finale_video_file_path = compose_final_video_without_lip_sync(original_video, translated_speech_audio, raw_accompaniment_audio, translated_speech_srt)
+
+    if finale_video_file_path == "":
+        raise Exception("合成最终视频失败")
+
+    return finale_video_file_path
 
 with gr.Blocks() as app:
     gr.Markdown("## 视频本地化 Demo [Github](https://github.com/crowaixyz/video-speech-localization)")
@@ -417,33 +435,26 @@ with gr.Blocks() as app:
     # step 4. 合成目标语言人声
     gr.Markdown("### Step 4. 合成目标语言人声")
     with gr.Row():
-        audio_speed = gr.Slider(label="调整人声语速", minimum=0.5, maximum=2.0, value=1.0, step=0.01, interactive=True)
+        speech_speed = gr.Slider(label="调整人声语速", minimum=0.5, maximum=2.0, value=1.0, step=0.01, interactive=True, info="通过调整语速，尽量保证生成的语音和原视频时长一致")
         compose_target_language_audio_button = gr.Button("点击合成")
 
     translated_speech_audio = gr.Audio(label="目标语言人声", type="filepath", interactive=False)
     translated_speech_srt = gr.File(label="目标语言字幕 SRT", type="filepath", interactive=False)
 
-    # step 5. 合成口型对齐视频
-    gr.Markdown("### Step 5. 合成口型对齐视频（耗时较长，耐心等待！）")
+    # Step 5. 合成最终视频
+    gr.Markdown("### Step 5. 合成最终视频")
     with gr.Row():
-        compose_lip_sync_video_button = gr.Button("点击合成")
-    
-    lip_synced_video = gr.Video(label="口型对齐视频", interactive=False)
-
-    # Step 6. 合成最终视频
-    gr.Markdown("### Step 6. 合成最终视频")
-    with gr.Row():
+        with gr.Column():
+            lip_sync_radio = gr.Radio(choices=["是", "否"], label="是否对齐口型", value="否", interactive=True, info="仅适合单人说话场景，需要始终保持露脸，且耗时较长！")
+            subtitle_radio = gr.Radio(choices=["是", "否"], label="是否添加字幕", value="是", interactive=False, info="目标语言字幕")
         compose_final_video_button = gr.Button("点击合成")
-
-    final_video = gr.Video(label="最终视频", interactive=False)
-
+    with gr.Row():
+        final_video = gr.Video(label="最终视频", interactive=False)
 
     # 回调事件
-    ## 1. 上传视频后，自动获取视频时长，并更新提取结束时间 slider 组件的值
+    ## 上传视频后，自动获取视频时长，并更新提取结束时间 slider 组件的值
     original_video.change(fn=update_extract_end_time, inputs=original_video, outputs=extract_end_time_seconds)
-    ## 2. 得到翻译后的音频后，自动调整最终合成视频时的音频倍速，为了保证最终视频时长和原始视频时长一致
-    # translated_speech_audio.change(fn=update_translated_speech_audio_speed, inputs=translated_speech_audio, outputs=audio_play_speed)
-
+    
     # 处理按钮点击事件
     audio_extract_button.click(
         extract_audio_and_text,
@@ -457,17 +468,12 @@ with gr.Blocks() as app:
     )
     compose_target_language_audio_button.click(
         compose_target_language_audio,
-        inputs=[raw_speech_audio, translated_speech_text, translated_speech_text_segment, target_speech_language, audio_speed],
+        inputs=[raw_speech_audio, translated_speech_text, translated_speech_text_segment, target_speech_language, speech_speed],
         outputs=[translated_speech_audio, translated_speech_srt]
     )
-    compose_lip_sync_video_button.click(
-        compose_lip_sync_video,
-        inputs=[original_video, translated_speech_audio],
-        outputs=[lip_synced_video]
-    )
     compose_final_video_button.click(
-        compose_final_video_v2,
-        inputs=[lip_synced_video, raw_accompaniment_audio, translated_speech_srt],
+        compose_final_video,
+        inputs=[original_video, translated_speech_audio, raw_accompaniment_audio, translated_speech_srt, lip_sync_radio, subtitle_radio],
         outputs=[final_video]
     )
 
