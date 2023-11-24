@@ -4,9 +4,11 @@ localize video speech from one language to another language, and clone the voice
 ## Feature
 - [x] localize video speech from one language to another language
 - [x] clone the voice of the speaker
+- [x] lip sync
 
 ## TODO
-- [ ] lip sync
+- [ ] improve generated video quality
+
 
 ## Installation
 ### 0. clone this repository and create nessary directories

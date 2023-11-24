@@ -50,10 +50,41 @@ def update_extract_end_time(video_path):
 #         return round(get_audio_length(translated_speech_audio) / video_length_seconds, 2)
 #     return 1.0
 
+# time segment text example:
+# [0.00s -> 0.50s]: Hello, my name is wallezen.
+# [0.50s -> 1.00s]: I am a software engineer.
+# [1.00s -> 1.50s]: I am from China.
+def time_segment_text_to_srt(text):
+    lines = text.strip().split('\n')
+    srt_text = []
+    pure_speech_text = []
+    
+    for i, line in enumerate(lines):
+        timestamps, content = line.split("]: ")
+        start_time, end_time = timestamps.strip("[").split(" -> ")
+        start_time = start_time.replace("s", "").strip()
+        end_time = end_time.replace("s", "").strip()
+        
+        srt_entry = []
+        srt_entry.append(str(i + 1))
+
+        srt_start_time = "00:00:0" + start_time.replace('.',',') if len(start_time.split('.')[0]) == 1 else "00:00:" + start_time.replace('.',',')
+        srt_end_time = "00:00:0" + end_time.replace('.',',') if len(end_time.split('.')[0]) == 1 else "00:00:" + end_time.replace('.',',')
+        srt_entry.append(f"{srt_start_time} --> {srt_end_time}")
+
+        srt_entry.append(content)
+        
+        srt_text.append('\n'.join(srt_entry))
+
+        pure_speech_text.append(content)
+    
+    return '\n\n'.join(srt_text), ' '.join(pure_speech_text)
+
+
 def extract_audio_and_text(video_path, raw_speech_language, extract_start_time_seconds, extract_end_time_seconds):
     # 上传视频，提取人声和文本
     if get_video_length(video_path) < 10:
-        raise Exception("视频时长必须超过10秒")
+        raise Exception("视频时长须大于 10 秒,不超过 60 秒")
 
     video_file_name = video_path.split("/")[-1].split(".")[0]
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -133,14 +164,14 @@ def extract_audio_and_text(video_path, raw_speech_language, extract_start_time_s
         raw_speech_text_segment.append(tmp)
 
     raw_speech_text = " ".join(raw_speech_text)
-    raw_speech_text_segment = "\n\n".join(raw_speech_text_segment)
+    raw_speech_text_segment = "\n".join(raw_speech_text_segment)
 
     return raw_speech_file_path, raw_accompaniment_file_path, raw_speech_text, raw_speech_text_segment
 
 
-def translate(raw_speech_audio, raw_speech_text, target_language):
+def translate(raw_speech_audio, raw_speech_text, raw_speech_text_segment, target_language):
     # 翻译为目标语言
-    ## call chatGPT to translate speech text
+    ## step 1. call chatGPT to translate speech text
     prompt = f"""
     Translate the following text to {language_map[target_language]}, add missing punctuation marks, preserving the format, not translate words between < and >, not include any other instructions in response:\n\n
     {raw_speech_text}
@@ -174,14 +205,14 @@ def translate(raw_speech_audio, raw_speech_text, target_language):
 
     translated_speech_text = ""
     try:
-        response = requests.post(openai_chat_api_url, headers=headers, json=payload)
-        if response.status_code == 200:
-            response_data = response.json()
-            print(response_data)
-            translated_speech_text = response_data["choices"][0]["message"]["content"]
-        else:
-            # print("请求 iGateway OpenAI Chat 接口出错: ", response)
-            raise Exception("请求 iGateway OpenAI Chat 接口出错: ", response)
+        with requests.post(openai_chat_api_url, headers=headers, json=payload) as response:
+            if response.status_code == 200:
+                response_data = response.json()
+                print(response_data)
+                translated_speech_text = response_data["choices"][0]["message"]["content"]
+            else:
+                # print("请求 iGateway OpenAI Chat 接口出错: ", response)
+                raise Exception("请求 iGateway OpenAI Chat 接口出错: ", response)
     except requests.exceptions.RequestException as e:
         # print("request openai failed:", e)
         raise Exception("请求 iGateway OpenAI Chat 接口失败: ", e)
@@ -189,15 +220,54 @@ def translate(raw_speech_audio, raw_speech_text, target_language):
     if translated_speech_text == "":
         raise Exception("请求 iGateway OpenAI 翻译失败")
 
-    return translated_speech_text
+    ## step 2. call chatGPT to translate speech text segment
+    prompt = f"""
+    Translate the following text to {language_map[target_language]}, add missing punctuation marks, preserving the format, not translate words between < and >, not include any other instructions in response:\n\n
+    {raw_speech_text_segment}
+    """
+
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [
+            {"role": "system", "content": "You are a helpful translator for localizing advertisement creatives."},
+            {"role": "user", "content": f"{prompt}"}
+        ]
+    }
+
+    translated_speech_text_segment = ""
+    try:
+        with requests.post(openai_chat_api_url, headers=headers, json=payload) as response:
+            if response.status_code == 200:
+                response_data = response.json()
+                print(response_data)
+                translated_speech_text_segment = response_data["choices"][0]["message"]["content"]
+            else:
+                # print("请求 iGateway OpenAI Chat 接口出错: ", response)
+                raise Exception("请求 iGateway OpenAI Chat 接口出错: ", response)
+    except requests.exceptions.RequestException as e:
+        # print("request openai failed:", e)
+        raise Exception("请求 iGateway OpenAI Chat 接口失败: ", e)
+
+    if translated_speech_text_segment == "":
+        raise Exception("请求 iGateway OpenAI 翻译按时间分段文本失败")
+
+    return translated_speech_text, translated_speech_text_segment
 
 
-def compose_target_language_audio(raw_speech_audio, translated_speech_text, target_language, audio_speed):
+def compose_target_language_audio(raw_speech_audio, translated_speech_text, translated_speech_text_segment, target_language, audio_speed):
     # 合成目标语言人声
     ## use coqui-xTTS-V2 to synthesize target language speech audio and clone raw speech tone
     raw_speech_file_name = raw_speech_audio.split("/")[-2] + "_" + raw_speech_audio.split("/")[-1].split(".")[0]
     translated_speech_file_path = f"{current_file_dir}/output/translated_speech/{target_language}_{raw_speech_file_name}.wav"
+    translated_speech_srt_file_path = f"{current_file_dir}/output/translated_speech/{target_language}_{raw_speech_file_name}.srt"
 
+    # write translated speech text to srt file
+    srt_text, pure_speech_text = time_segment_text_to_srt(translated_speech_text_segment)
+    print(pure_speech_text)
+    with open(translated_speech_srt_file_path, "w", encoding="utf-8") as f:
+        f.write(srt_text)
+
+    # use TTS to synthesize target language speech audio
     # Init coqui 🐸TTS
     tts = TTS(
         #model_name="tts_models/multilingual/multi-dataset/xtts_v2",
@@ -210,9 +280,10 @@ def compose_target_language_audio(raw_speech_audio, translated_speech_text, targ
     # Text to speech list of amplitude values as output
     # wav = tts.tts(text="Hello world!", speaker_wav="my/cloning/audio.wav", language="en")
     # Text to speech to a file
-    tts.tts_to_file(text=f"{translated_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path}", speed=audio_speed)
+    tts.tts_to_file(text=f"{pure_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path}", speed=audio_speed)
 
-    return translated_speech_file_path
+    return translated_speech_file_path, translated_speech_srt_file_path
+
 
 def compose_lip_sync_video(original_video, translated_speech_audio, audio_play_speed):
     # 合成口型对齐视频
@@ -269,7 +340,8 @@ def compose_final_video(original_video, target_speech_language, translated_speec
         "-map", "[a]",
         "-c:v", "copy",
         "-c:a", "aac",
-        f"{finale_video_file_path}"]
+        f"{finale_video_file_path}"
+    ]
     print(" ".join(compose_cmd))
     result = subprocess.run(compose_cmd, capture_output=True, text=True)
     print(result)
@@ -282,7 +354,7 @@ def compose_final_video(original_video, target_speech_language, translated_speec
     return finale_video_file_path
 
 
-def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio):
+def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio, translated_speech_srt):
     # 合成最终视频
     finale_video_file_path = f"{current_file_dir}/output/final_video/{lip_sync_video.split('/')[-1].split('.')[0]}.mp4"
     ## use ffmpeg to replace original video speech with translated speech
@@ -290,10 +362,11 @@ def compose_final_video_v2(lip_sync_video, raw_accompaniment_audio):
         "ffmpeg", 
         "-i", f"{lip_sync_video}", 
         "-i", f"{raw_accompaniment_audio}", 
+        "-vf", f"subtitles={translated_speech_srt}",
         "-filter_complex", "[0:a][1:a]amerge=inputs=2[a]",
         "-map", "0:v",
         "-map", "[a]",
-        "-c:v", "copy",
+        "-c:a", "aac",
         "-ac", "2",
         f"{finale_video_file_path}"]
     print(" ".join(compose_cmd))
@@ -313,7 +386,7 @@ with gr.Blocks() as app:
     # step 1. 上传视频
     gr.Markdown("### Step 1. 上传视频")
     with gr.Row():
-        original_video = gr.Video(label="原始视频(注意视频时长须大于10秒)")
+        original_video = gr.Video(label="原始视频(注意视频时长须大于10秒，不超过60秒, 30~60秒为佳)")
         with gr.Column():
             original_videl_speech_language = gr.Dropdown(choices=["ar","pt","zh-cn","cs","nl","en","fr","de","it","pl","ru","es","tr","ja","ko","hu"], label="视频人声语言")
             gr.Markdown("ar:    Arabic <br />pt: Brazilian    Portuguese <br />zh-cn: Chinese <br />cs:    Czech <br />nl:    Dutch <br />en:    English <br />fr:    French <br />de:    German <br />it:    Italian <br />pl:    Polish <br />ru:    Russian <br />es:    Spanish <br />tr:    Turkish <br />ja:    Japanese <br />ko:    Korean <br />hu: Hungarian")
@@ -329,8 +402,8 @@ with gr.Blocks() as app:
 
     raw_speech_audio = gr.Audio(label="人声", type="filepath", interactive=False)
     raw_accompaniment_audio = gr.Audio(label="背景音乐", type="filepath", interactive=False)
-    raw_speech_text_segment = gr.Textbox(label="按时间分段的人声文本", interactive=False)
-    raw_speech_text = gr.Textbox(label="完整不分段的人声文本（可修改，对于不需要进行后续翻译的词使用'<>'）")
+    raw_speech_text_segment = gr.Textbox(label="按时间分段的人声文本（可修改，对于不需要进行后续翻译的词使用'<>'）", interactive=True)
+    raw_speech_text = gr.Textbox(label="完整不分段的人声文本")
 
     # step 3. 翻译为目标语言
     gr.Markdown("### Step 3. 翻译为目标语言")
@@ -338,7 +411,8 @@ with gr.Blocks() as app:
         target_speech_language = gr.Dropdown(choices=["ar","pt","zh-cn","cs","nl","en","fr","de","it","pl","ru","es","tr","ja","ko","hu"], label="选择目标语言")
         translate_button = gr.Button("点击翻译")
 
-    translated_speech_text = gr.Textbox(label="翻译后的人声文本（可修改）", interactive=True)
+    translated_speech_text_segment = gr.Textbox(label="翻译后的按时间分段的人声文本(可修改)", interactive=True)
+    translated_speech_text = gr.Textbox(label="翻译后的完整不分段的人声文本", interactive=False)
 
     # step 4. 合成目标语言人声
     gr.Markdown("### Step 4. 合成目标语言人声")
@@ -347,9 +421,10 @@ with gr.Blocks() as app:
         compose_target_language_audio_button = gr.Button("点击合成")
 
     translated_speech_audio = gr.Audio(label="目标语言人声", type="filepath", interactive=False)
+    translated_speech_srt = gr.File(label="目标语言字幕 SRT", type="filepath", interactive=False)
 
     # step 5. 合成口型对齐视频
-    gr.Markdown("### Step 5. 合成口型对齐视频")
+    gr.Markdown("### Step 5. 合成口型对齐视频（耗时较长，耐心等待！）")
     with gr.Row():
         compose_lip_sync_video_button = gr.Button("点击合成")
     
@@ -377,13 +452,13 @@ with gr.Blocks() as app:
     )
     translate_button.click(
         translate,
-        inputs=[raw_speech_audio, raw_speech_text, target_speech_language],
-        outputs=[translated_speech_text]
+        inputs=[raw_speech_audio, raw_speech_text, raw_speech_text_segment, target_speech_language],
+        outputs=[translated_speech_text, translated_speech_text_segment]
     )
     compose_target_language_audio_button.click(
         compose_target_language_audio,
-        inputs=[raw_speech_audio, translated_speech_text, target_speech_language, audio_speed],
-        outputs=[translated_speech_audio]
+        inputs=[raw_speech_audio, translated_speech_text, translated_speech_text_segment, target_speech_language, audio_speed],
+        outputs=[translated_speech_audio, translated_speech_srt]
     )
     compose_lip_sync_video_button.click(
         compose_lip_sync_video,
@@ -392,7 +467,7 @@ with gr.Blocks() as app:
     )
     compose_final_video_button.click(
         compose_final_video_v2,
-        inputs=[lip_synced_video, raw_accompaniment_audio],
+        inputs=[lip_synced_video, raw_accompaniment_audio, translated_speech_srt],
         outputs=[final_video]
     )
 
