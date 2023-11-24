@@ -7,6 +7,7 @@ localize video speech from one language to another language, and clone the voice
 - [x] lip sync
 
 ## TODO
+- [ ] support Japanese speech composition
 - [ ] improve generated video quality
 
 
@@ -23,9 +24,14 @@ mkdir -p output/final_video
 mkdir -p pretrained_models
 ```
 
-### 1. Install ffmpeg
+### 1. Install ffmpeg and [Mecab](https://taku910.github.io/mecab/)
 ```
 conda install -c conda-forge ffmpeg
+
+# install additional packages in order to compose Japanese speech
+# yum install mecab  # MeCab is a popular Japanese morphological analyzer
+# ln -s /etc/mecabrc /usr/local/etc/mecabrc  # symbolic link
+# yum install mecab-ipadic
 ``` 
 
 ### 2. create main virtual environment, and install dependencies [faster-whisper](https://github.com/guillaumekln/faster-whisper) and ~~[openai](https://platform.openai.com/docs/introduction)~~ and [Requests](https://requests.readthedocs.io/en/latest/) and [Gradio](https://www.gradio.app/) and [TTS](https://github.com/coqui-ai/TTS) and [moviepy](https://github.com/Zulko/moviepy) and ~~[pydub](https://github.com/jiaaro/pydub)~~
@@ -42,6 +48,8 @@ pip install gradio
 pip install TTS
 
 pip install moviepy
+
+pip install cutlet
 
 conda deactivate
 ```
@@ -129,3 +137,12 @@ tts = TTS(
 ![](https://futurelog-1251943639.cos.accelerate.myqcloud.com/img/202311231206734.png)
 - download [detection_Resnet50_Final.pth](https://github.com/xinntao/facexlib/releases/download/v0.1.0/detection_Resnet50_Final.pth) and [parsing_parsenet.pth](https://github.com/xinntao/facexlib/releases/download/v0.2.2/parsing_parsenet.pth), put them under `/path/to/conda-envs/video-speech-localization-video-retalking/lib/python3.8/site-packages/facexlib/weights/`
 ![](https://futurelog-1251943639.cos.accelerate.myqcloud.com/img/202311231206206.png)
+
+<!-- 5. may encounter following error when compose Janaese speech
+```
+File "/data/anaconda3/envs/video-speech-localization/lib/python3.10/site-packages/cutlet/cutlet.py", line 148, in __init__
+    self.tagger = fugashi.Tagger(mecab_args)
+  File "fugashi/fugashi.pyx", line 394, in fugashi.fugashi.Tagger.__init__
+RuntimeError: Unknown dictionary format, use a GenericTagger.
+```
+you can try to change the `fugashi.Tagger` to `fugashi.GenericTagger`. -->

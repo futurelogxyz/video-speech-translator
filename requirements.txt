@@ -3,4 +3,4 @@ faster-whisper
 TTS
 requests
 moviepy
-pydub
+cutlet

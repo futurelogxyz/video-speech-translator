@@ -445,7 +445,7 @@ with gr.Blocks() as app:
     gr.Markdown("### Step 5. 合成最终视频")
     with gr.Row():
         with gr.Column():
-            lip_sync_radio = gr.Radio(choices=["是", "否"], label="是否对齐口型", value="否", interactive=True, info="仅适合单人说话场景，需要始终保持露脸，且耗时较长！")
+            lip_sync_radio = gr.Radio(choices=["是", "否"], label="是否对齐口型", value="否", interactive=True, info="仅适合单人说话场景，需要始终保持露脸，且仅支持部分语言，耗时较长！")
             subtitle_radio = gr.Radio(choices=["是", "否"], label="是否添加字幕", value="是", interactive=False, info="目标语言字幕")
         compose_final_video_button = gr.Button("点击合成")
     with gr.Row():
