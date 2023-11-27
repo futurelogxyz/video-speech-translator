@@ -11,6 +11,7 @@ localize video speech from one language to another language, and clone the voice
 ## TODO
 - [ ] support Japanese speech composition
 - [ ] improve generated video quality
+- [ ] face swap
 
 
 ## Installation
