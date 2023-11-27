@@ -258,6 +258,7 @@ def compose_target_language_audio(raw_speech_audio, translated_speech_text, tran
     # 合成目标语言人声
     ## use coqui-xTTS-V2 to synthesize target language speech audio and clone raw speech tone
     raw_speech_file_name = raw_speech_audio.split("/")[-2] + "_" + raw_speech_audio.split("/")[-1].split(".")[0]
+    translated_speech_file_path_tmp = f"{current_file_dir}/output/translated_speech/{target_language}_{raw_speech_file_name}-tmp.wav"
     translated_speech_file_path = f"{current_file_dir}/output/translated_speech/{target_language}_{raw_speech_file_name}.wav"
     translated_speech_srt_file_path = f"{current_file_dir}/output/translated_speech/{target_language}_{raw_speech_file_name}.srt"
 
@@ -280,9 +281,30 @@ def compose_target_language_audio(raw_speech_audio, translated_speech_text, tran
     # Text to speech list of amplitude values as output
     # wav = tts.tts(text="Hello world!", speaker_wav="my/cloning/audio.wav", language="en")
     # Text to speech to a file
-    tts.tts_to_file(text=f"{pure_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path}", speed=speech_speed)
+    tts.tts_to_file(text=f"{pure_speech_text}", speaker_wav=f"{raw_speech_audio}", language=f"{target_language}", file_path=f"{translated_speech_file_path_tmp}")
 
-    return translated_speech_file_path, translated_speech_srt_file_path
+    # change speech speed
+    if abs(speech_speed - 1.0) < 0.01:  # speech speed adjust step is 0.01
+        translated_speech_file_path = translated_speech_file_path_tmp
+    else:
+        change_speech_speed_cmd = [
+            "ffmpeg", 
+            "-y",
+            "-i", f"{translated_speech_file_path_tmp}", 
+            "-filter:a", f"atempo={speech_speed}", 
+            f"{translated_speech_file_path}"
+        ]
+
+        print(" ".join(change_speech_speed_cmd))
+        result = subprocess.run(change_speech_speed_cmd, capture_output=True, text=True)
+        print(result)
+        # To check if the command was successful
+        if result.returncode == 0:
+            print("调整语速成功")
+        else:
+            raise Exception("调整语速失败")
+
+    return translated_speech_file_path_tmp, translated_speech_file_path, translated_speech_srt_file_path
 
 
 def compose_lip_sync_video(original_video, translated_speech_audio):
@@ -420,7 +442,7 @@ with gr.Blocks() as app:
 
     raw_speech_audio = gr.Audio(label="人声", type="filepath", interactive=False)
     raw_accompaniment_audio = gr.Audio(label="背景音乐", type="filepath", interactive=False)
-    raw_speech_text_segment = gr.Textbox(label="按时间分段的人声文本（可修改，对于不需要进行后续翻译的词使用'<>'）", interactive=True)
+    raw_speech_text_segment = gr.Textbox(label="按时间分段的人声文本（可修改，供后续步骤使用，对于不需要进行后续翻译的词使用'<>'）", interactive=True)
     raw_speech_text = gr.Textbox(label="完整不分段的人声文本")
 
     # step 3. 翻译为目标语言
@@ -429,7 +451,7 @@ with gr.Blocks() as app:
         target_speech_language = gr.Dropdown(choices=["ar","pt","zh-cn","cs","nl","en","fr","de","it","pl","ru","es","tr","ja","ko","hu"], label="选择目标语言")
         translate_button = gr.Button("点击翻译")
 
-    translated_speech_text_segment = gr.Textbox(label="翻译后的按时间分段的人声文本(可修改)", interactive=True)
+    translated_speech_text_segment = gr.Textbox(label="翻译后的按时间分段的人声文本(可修改，供后续步骤使用)", interactive=True)
     translated_speech_text = gr.Textbox(label="翻译后的完整不分段的人声文本", interactive=False)
 
     # step 4. 合成目标语言人声
@@ -438,7 +460,8 @@ with gr.Blocks() as app:
         speech_speed = gr.Slider(label="调整人声语速", minimum=0.5, maximum=2.0, value=1.0, step=0.01, interactive=True, info="通过调整语速，尽量保证生成的语音和原视频时长一致")
         compose_target_language_audio_button = gr.Button("点击合成")
 
-    translated_speech_audio = gr.Audio(label="目标语言人声", type="filepath", interactive=False)
+    translated_speech_audio_tmp = gr.Audio(label="目标语言人声（未调整语速）", type="filepath", interactive=False)
+    translated_speech_audio = gr.Audio(label="目标语言人声（已调整语速，供后续步骤使用）", type="filepath", interactive=False)
     translated_speech_srt = gr.File(label="目标语言字幕 SRT", type="filepath", interactive=False)
 
     # Step 5. 合成最终视频
@@ -469,7 +492,7 @@ with gr.Blocks() as app:
     compose_target_language_audio_button.click(
         compose_target_language_audio,
         inputs=[raw_speech_audio, translated_speech_text, translated_speech_text_segment, target_speech_language, speech_speed],
-        outputs=[translated_speech_audio, translated_speech_srt]
+        outputs=[translated_speech_audio_tmp, translated_speech_audio, translated_speech_srt]
     )
     compose_final_video_button.click(
         compose_final_video,
