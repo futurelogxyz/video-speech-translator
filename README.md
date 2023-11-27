@@ -2,9 +2,11 @@
 localize video speech from one language to another language, and clone the voice of the speaker.
 
 ## Feature
-- [x] localize video speech from one language to another language
-- [x] clone the voice of the speaker
+- [x] translate speech audio
+- [x] clone the voice of original speaker
 - [x] lip sync
+- [x] subtitle
+- [x] video watermark
 
 ## TODO
 - [ ] support Japanese speech composition
