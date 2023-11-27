@@ -26,7 +26,7 @@ mkdir -p output/final_video
 mkdir -p pretrained_models
 ```
 
-### 1. Install ffmpeg and [Mecab](https://taku910.github.io/mecab/)
+### 1. Install ffmpeg and ～～[Mecab](https://taku910.github.io/mecab/)～～
 ```
 conda install -c conda-forge ffmpeg
 
