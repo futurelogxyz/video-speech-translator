@@ -1,6 +1,8 @@
 # video-speech-localization
 localize video speech from one language to another language, and clone the voice of the speaker.
 
+![](https://futurelog-1251943639.cos.accelerate.myqcloud.com/img/202311281146734-video-speech-localization.png)
+
 ## Feature
 - [x] translate speech audio
 - [x] clone the voice of original speaker
