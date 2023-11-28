@@ -54,8 +54,6 @@ pip install TTS
 
 pip install moviepy
 
-pip install cutlet
-
 conda deactivate
 ```
 
