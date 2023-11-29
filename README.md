@@ -3,6 +3,25 @@ localize video speech from one language to another language, and clone the voice
 
 ![](https://futurelog-1251943639.cos.accelerate.myqcloud.com/img/202311281146734-video-speech-localization.png)
 
+## Demo
+- chinese speech to french speech
+chinese speech:
+<iframe src="//player.bilibili.com/player.html?aid=536623506&bvid=BV1CM411R7TA&cid=1348140726&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+french speech:
+<iframe src="//player.bilibili.com/player.html?aid=919094393&bvid=BV12u4y1G7bz&cid=1348138829&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+
+- chinese speech to english speech
+chinese speech:
+<iframe src="//player.bilibili.com/player.html?aid=921597094&bvid=BV1su4y1c71V&cid=1348140637&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+english speech:
+<iframe src="//player.bilibili.com/player.html?aid=579063666&bvid=BV1X64y177iW&cid=1348138828&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+
+
+| original | french speech |
+| --- | --- |
+| ![chinese-01](https://futurelog-1251943639.cos.ap-shanghai.myqcloud.com/video/linzhiling-shorts.mp4)   | ![french](https://futurelog-1251943639.cos.ap-shanghai.myqcloud.com/video/linzhiling-shorts-french.mp4)  |
+| ![chinese-02](https://futurelog-1251943639.cos.ap-shanghai.myqcloud.com/video/mayun-shorts-1.mp4)  |  ![english](https://futurelog-1251943639.cos.ap-shanghai.myqcloud.com/video/mayun-shorts-1-en.mp4) |
+
 ## Feature
 - [x] translate speech audio
 - [x] clone the voice of original speaker
@@ -59,6 +78,7 @@ conda deactivate
 
 
 ### 3. create spleeter virtual environment, and install [Spleeter](https://github.com/deezer/spleeter)
+Tips: use an isolated virtual environment to install Spleeter, because Spleeter may install some dependencies which may conflict with other packages(like TTS).
 ```
 conda create -n video-speech-localization-spleeter python=3.10
 conda activate video-speech-localization-spleeter
@@ -69,6 +89,7 @@ conda deactivate
 ```
 
 ### 4. create video-retalking virtual environment, and install [video-retalking](https://github.com/OpenTalker/video-retalking)
+Tips: use an isolated virtual environment to install video-retalking, because video-retalking may install some dependencies which may conflict with other packages.
 ```
 # clone video-retalking github repository into current directory
 git clone https://github.com/vinthony/video-retalking.git
