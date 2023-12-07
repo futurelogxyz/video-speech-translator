@@ -422,7 +422,7 @@ def compose_final_video(original_video, translated_speech_audio, raw_accompanime
     return finale_video_file_path
 
 with gr.Blocks() as app:
-    gr.Markdown("## 视频本地化 Demo [Github](https://github.com/crowaixyz/video-speech-localization)")
+    gr.Markdown("## 视频语音翻译 Demo [Github](https://github.com/crowaixyz/video-speech-localization)")
     # step 1. 上传视频
     gr.Markdown("### Step 1. 上传视频")
     with gr.Row():

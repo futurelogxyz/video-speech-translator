@@ -1,4 +1,4 @@
-# video-speech-localization
+# video-speech-translator
 localize video speech from one language to another language, and clone the voice of the speaker.
 
 ![](https://futurelog-1251943639.cos.accelerate.myqcloud.com/img/202311281146734-video-speech-localization.png)
